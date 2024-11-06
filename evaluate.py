@@ -11,7 +11,7 @@ testloader = DataLoader(testset, batch_size=32, shuffle=False, num_workers=2)
 
 # Ładowanie modelu
 net = EnhancedCNN()
-net.load_state_dict(torch.load('enhanced_cnn.pth'))
+net.load_state_dict(torch.load('enhanced_cnn.pth',  weights_only=True))
 net.eval()  # Przełączamy model w tryb ewaluacji
 
 # Funkcja ewaluacji modelu
@@ -29,4 +29,5 @@ def evaluate_model():
     print(f"Accuracy on test set: {accuracy:.2f}%")
 
 # Testowanie modelu
-evaluate_model()
+if __name__ == '__main__':
+    evaluate_model()
