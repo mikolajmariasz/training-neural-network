@@ -3,9 +3,12 @@ import torch.nn as nn  # Moduł do tworzenia warstw sieci neuronowych
 import torch.optim as optim  # Moduł do optymalizacji, np. SGD, Adam itp.
 import torchvision  # Biblioteka do przetwarzania obrazów, zawiera popularne zestawy danych i narzędzia do przetwarzania obrazów
 import torchvision.transforms as transforms  # Moduł do przekształcania danych, np. normalizacja, konwersja na tensor itp.
+from torch.utils.data import DataLoader, Subset  # DataLoader do ładowania danych w mini-batchach, Subset do filtrowania zbioru danych
 import matplotlib.pyplot as plt  # Biblioteka do tworzenia wykresów i wizualizacji
 import numpy as np  # Biblioteka numeryczna do operacji na macierzach/tablicach
-from torch.utils.data import DataLoader, Subset  # DataLoader do ładowania danych w mini-batchach, Subset do filtrowania zbioru danych
+
+from model import EnhancedCNN # importowanie struktury modelu sieci neuronowej
+
 
 # Transformacja obrazu do tensora PyTorch i normalizacja wartości pikseli do zakresu [-1, 1]
 transform = transforms.Compose([
@@ -47,9 +50,10 @@ filtered_testset = Subset(testset, test_indices)
 # Funkcja do przemapowania etykiet
 # Zamieniamy oryginalne etykiety na nowe indeksy (0, 1, 2, ...) dla wybranych klas
 def remap_labels(dataset, selected_indices):
+    new_labels = []
     for idx in range(len(dataset)):
-        # Przemapowujemy oryginalną etykietę na nowy indeks zgodny z wybranymi klasami
-        dataset.dataset.targets[dataset.indices[idx]] = selected_indices.index(dataset.dataset.targets[dataset.indices[idx]])
+        new_labels.append(selected_indices.index(dataset.dataset.targets[dataset.indices[idx]]))
+    dataset.dataset.targets = new_labels
 
 # Przemapowanie etykiet w zbiorze treningowym i testowym
 remap_labels(filtered_trainset, selected_class_indices)
@@ -66,3 +70,44 @@ train_dataset, val_dataset = torch.utils.data.random_split(filtered_trainset, [t
 trainloader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)  # Mini-batche po 32 obrazy, dane są losowo mieszane
 valloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=2)  # Mini-batche po 32 obrazy, dane nie są mieszane
 testloader = DataLoader(filtered_testset, batch_size=32, shuffle=False, num_workers=2)  # Mini-batche po 32 obrazy, dane nie są mieszane
+
+
+
+# Inicjalizacja sieci, funkcji kosztu oraz optymalizatora z nowym współczynnikiem uczenia
+net = EnhancedCNN(num_classes=len(selected_classes))  # Tworzymy instancję sieci
+criterion = nn.CrossEntropyLoss()  # Funkcja kosztu (CrossEntropyLoss dla klasyfikacji wieloklasowej)
+optimizer = optim.Adam(net.parameters(), lr=0.0005)  # Optymalizator Adam z niskim współczynnikiem uczenia (stabilność)
+
+def train_model():
+    train_losses, val_losses = [], []
+    for epoch in range(10):
+        running_loss = 0.0
+        net.train()
+        for inputs, labels in trainloader:
+            optimizer.zero_grad()
+            outputs = net(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+
+        train_losses.append(running_loss / len(trainloader))
+
+        # Ewaluacja na zbiorze walidacyjnym po każdej epoce
+        val_loss = 0.0
+        net.eval()
+        with torch.no_grad():
+            for inputs, labels in valloader:
+                outputs = net(inputs)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+        val_losses.append(val_loss / len(valloader))
+        
+        print(f"Epoch {epoch+1} - Train Loss: {train_losses[-1]:.4f} - Validation Loss: {val_losses[-1]:.4f}")
+
+    # Zapisz model
+    torch.save(net.state_dict(), 'enhanced_cnn.pth')
+    print("Model zapisany do pliku 'enhanced_cnn.pth'")
+
+# Uruchomienie treningu
+train_model()
