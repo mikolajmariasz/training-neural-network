@@ -1,2 +1,54 @@
-data/
-_pycache_/
+# Byte-compiled files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Virtual environment
+.env/
+.venv/
+env/
+venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs and debugging files
+*.log
+*.out
+*.err
+logs/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing artifacts
+*.coverage
+*.pytest_cache/
+htmlcov/
+
+# Data and model files
+*.h5
+*.hdf5
+*.pth
+*.ckpt
+
+# Dataset files
+PennFudanPed/
+*.zip
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Miscellaneous
+*.bak
+*.tmp
