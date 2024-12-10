@@ -1,5 +1,3 @@
-# dataset_generator.py
-
 import os
 import json
 import random
@@ -7,11 +5,11 @@ from PIL import Image, ImageDraw
 import numpy as np
 
 # Configuration
-IMAGE_SIZE = (128, 128)  # Width, Height
-NUM_IMAGES = 1000
+IMAGE_SIZE = (256, 256)
+NUM_IMAGES = 4000
 MAX_SHAPES_PER_IMAGE = 5
-MIN_SHAPE_SIZE = 10
-MAX_SHAPE_SIZE = 30
+MIN_SHAPE_SIZE = 20
+MAX_SHAPE_SIZE = 60
 
 # Output directories
 OUTPUT_DIR = 'dataset'
@@ -22,30 +20,59 @@ TRAIN_LABELS_DIR = os.path.join(TRAIN_DIR, 'labels')
 VAL_IMAGES_DIR = os.path.join(VAL_DIR, 'images')
 VAL_LABELS_DIR = os.path.join(VAL_DIR, 'labels')
 
-# Classes
-CLASSES = ['circle', 'square']
+# Classes (no rectangle this time)
+CLASSES = ['circle', 'square', 'triangle']
 
 def create_dirs():
     for directory in [TRAIN_IMAGES_DIR, TRAIN_LABELS_DIR, VAL_IMAGES_DIR, VAL_LABELS_DIR]:
         os.makedirs(directory, exist_ok=True)
 
-def generate_shape(draw, existing_boxes):
-    shape_type = random.choice(CLASSES)
-    for _ in range(100):  # Try 100 times to place a non-overlapping shape
-        size = random.randint(MIN_SHAPE_SIZE, MAX_SHAPE_SIZE)
-        x = random.randint(0, IMAGE_SIZE[0] - size - 1)
-        y = random.randint(0, IMAGE_SIZE[1] - size - 1)
-        bbox = [x, y, x + size, y + size]
-        
-        if not check_overlap(bbox, existing_boxes):
-            if shape_type == 'circle':
-                radius = size // 2
-                center = (x + radius, y + radius)
-                draw.ellipse([center[0]-radius, center[1]-radius, center[0]+radius, center[1]+radius], fill='black')
-            elif shape_type == 'square':
-                draw.rectangle(bbox, fill='black')
-            return shape_type, bbox
-    return None, None
+def draw_random_shape(shape_type, size):
+    shape_img = Image.new('RGBA', (size, size), (255,255,255,0))
+    draw = ImageDraw.Draw(shape_img)
+
+    shape_color = (random.randint(0,255), random.randint(0,255), random.randint(0,255), 255)
+
+    if shape_type == 'circle':
+        draw.ellipse([0,0,size,size], fill=shape_color)
+    elif shape_type == 'square':
+        draw.rectangle([0,0,size,size], fill=shape_color)
+    elif shape_type == 'triangle':
+        triangle_points = [(size/2, 0), (0, size), (size, size)]
+        draw.polygon(triangle_points, fill=shape_color)
+
+    angle = random.uniform(0, 359)
+    shape_img = shape_img.rotate(angle, expand=True)
+
+    arr = np.array(shape_img)
+    mask = arr[..., 3] > 0
+    ys, xs = np.where(mask)
+
+    if len(xs) == 0 or len(ys) == 0:
+        return shape_img, (0,0, shape_img.width-1, shape_img.height-1)
+
+    x_min, x_max = xs.min(), xs.max()
+    y_min, y_max = ys.min(), ys.max()
+
+    return shape_img, (x_min, y_min, x_max, y_max)
+
+def compute_iou(boxA, boxB):
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+
+    interW = max(0, xB - xA)
+    interH = max(0, yB - yA)
+    interArea = interW * interH
+    if interArea == 0:
+        return 0.0
+
+    boxAArea = (boxA[2]-boxA[0]) * (boxA[3]-boxA[1])
+    boxBArea = (boxB[2]-boxB[0]) * (boxB[3]-boxB[1])
+
+    iou = interArea / float(boxAArea + boxBArea - interArea)
+    return iou
 
 def check_overlap(bbox, existing_boxes, iou_threshold=0.1):
     for box in existing_boxes:
@@ -54,40 +81,49 @@ def check_overlap(bbox, existing_boxes, iou_threshold=0.1):
             return True
     return False
 
-def compute_iou(boxA, boxB):
-    # Compute Intersection over Union
-    xA = max(boxA[0], boxB[0])
-    yA = max(boxA[1], boxB[1])
-    xB = min(boxA[2], boxB[2])
-    yB = min(boxA[3], boxB[3])
+def place_shape_on_image(img, existing_boxes):
+    shape_type = random.choice(CLASSES)
+    for _ in range(100):
+        size = random.randint(MIN_SHAPE_SIZE, MAX_SHAPE_SIZE)
+        shape_img, shape_bbox = draw_random_shape(shape_type, size)
+        sw, sh = shape_img.size
 
-    interArea = max(0, xB - xA) * max(0, yB - yA)
-    if interArea == 0:
-        return 0.0
+        max_x = IMAGE_SIZE[0] - sw
+        max_y = IMAGE_SIZE[1] - sh
+        if max_x < 0 or max_y < 0:
+            continue
+        x = random.randint(0, max_x)
+        y = random.randint(0, max_y)
 
-    boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
-    boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+        shape_x_min = x + shape_bbox[0]
+        shape_y_min = y + shape_bbox[1]
+        shape_x_max = x + shape_bbox[2]
+        shape_y_max = y + shape_bbox[3]
+        candidate_bbox = [shape_x_min, shape_y_min, shape_x_max, shape_y_max]
 
-    iou = interArea / float(boxAArea + boxBArea - interArea)
-    return iou
+        if not check_overlap(candidate_bbox, existing_boxes):
+            img.paste(shape_img, (x,y), shape_img)
+            return shape_type, candidate_bbox
+    return None, None
 
 def generate_image(index, split='train'):
-    img = Image.new('RGB', IMAGE_SIZE, color='white')
-    draw = ImageDraw.Draw(img)
+    bg_color = (random.randint(200,255), random.randint(200,255), random.randint(200,255))
+    img = Image.new('RGB', IMAGE_SIZE, color=bg_color)
+
     num_shapes = random.randint(1, MAX_SHAPES_PER_IMAGE)
     objects = []
     existing_boxes = []
 
     for _ in range(num_shapes):
-        shape_type, bbox = generate_shape(draw, existing_boxes)
+        shape_type, bbox = place_shape_on_image(img, existing_boxes)
         if shape_type:
+            bbox = [int(b) for b in bbox]
             objects.append({
                 'label': shape_type,
                 'bbox': bbox
             })
             existing_boxes.append(bbox)
 
-    # Save image
     if split == 'train':
         img_path = os.path.join(TRAIN_IMAGES_DIR, f'image_{index}.png')
         label_path = os.path.join(TRAIN_LABELS_DIR, f'image_{index}.json')
@@ -96,8 +132,6 @@ def generate_image(index, split='train'):
         label_path = os.path.join(VAL_LABELS_DIR, f'image_{index}.json')
 
     img.save(img_path)
-
-    # Save labels
     with open(label_path, 'w') as f:
         json.dump({"objects": objects}, f)
 
