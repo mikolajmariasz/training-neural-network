@@ -21,18 +21,66 @@ VAL_IMAGES_DIR = os.path.join(VAL_DIR, 'images')
 VAL_LABELS_DIR = os.path.join(VAL_DIR, 'labels')
 
 # Classes (no rectangle this time)
-CLASSES = ['circle', 'square', 'triangle']
+#CLASSES = ['circle', 'square', 'triangle']
+CLASSES = ['star', 'hexagon', 'arrow']
 
 def create_dirs():
     for directory in [TRAIN_IMAGES_DIR, TRAIN_LABELS_DIR, VAL_IMAGES_DIR, VAL_LABELS_DIR]:
         os.makedirs(directory, exist_ok=True)
+
+def draw_star(draw, center, size, color):
+    cx, cy = center
+    spikes = 5
+    outer_radius = size // 2
+    inner_radius = int(outer_radius * 0.4)
+    points = []
+    angle_between_spikes = 2 * np.pi / spikes
+
+    for i in range(spikes * 2):
+        angle = i * angle_between_spikes / 2
+        if i % 2 == 0:
+            radius = outer_radius
+        else:
+            radius = inner_radius
+        x = cx + int(radius * np.sin(angle))
+        y = cy + int(radius * np.cos(angle))
+        points.append((x, y))
+
+    draw.polygon(points, fill=color)
+
+def draw_hexagon(draw, center, size, color):
+    cx, cy = center
+    angle_offset = np.pi / 6
+    sides = 6
+    radius = size // 2
+    points = [
+        (cx + radius * np.cos(angle_offset + 2 * np.pi * i / sides), 
+         cy + radius * np.sin(angle_offset + 2 * np.pi * i / sides))
+        for i in range(sides)
+    ]
+    draw.polygon(points, fill=color)
+
+def draw_arrow(draw, center, size, color):
+    cx, cy = center
+    points = [
+        (cx - size // 3, cy - size // 2),  # Tail left
+        (cx + size // 3, cy - size // 2),  # Tail right
+        (cx + size // 3, cy),              # Middle right
+        (cx + size // 2, cy),              # Tip
+        (cx, cy + size // 2),              # Tip bottom
+        (cx - size // 2, cy),              # Tip left
+        (cx - size // 3, cy)               # Middle left
+    ]
+    draw.polygon(points, fill=color)
 
 def draw_random_shape(shape_type, size):
     shape_img = Image.new('RGBA', (size, size), (255,255,255,0))
     draw = ImageDraw.Draw(shape_img)
 
     shape_color = (random.randint(0,255), random.randint(0,255), random.randint(0,255), 255)
-
+    center = (size // 2, size // 2)
+    #Dataset 1
+    '''
     if shape_type == 'circle':
         draw.ellipse([0,0,size,size], fill=shape_color)
     elif shape_type == 'square':
@@ -40,6 +88,14 @@ def draw_random_shape(shape_type, size):
     elif shape_type == 'triangle':
         triangle_points = [(size/2, 0), (0, size), (size, size)]
         draw.polygon(triangle_points, fill=shape_color)
+    '''
+    #Dataset 2
+    if shape_type == 'star':
+        draw_star(draw, center, size, shape_color)
+    elif shape_type == 'hexagon':
+        draw_hexagon(draw, center, size, shape_color)
+    elif shape_type == 'arrow':
+        draw_arrow(draw, center, size, shape_color)
 
     angle = random.uniform(0, 359)
     shape_img = shape_img.rotate(angle, expand=True)
@@ -49,7 +105,7 @@ def draw_random_shape(shape_type, size):
     ys, xs = np.where(mask)
 
     if len(xs) == 0 or len(ys) == 0:
-        return shape_img, (0,0, shape_img.width-1, shape_img.height-1)
+        return shape_img, (0, 0, shape_img.width - 1, shape_img.height - 1)
 
     x_min, x_max = xs.min(), xs.max()
     y_min, y_max = ys.min(), ys.max()
