@@ -7,7 +7,7 @@ import numpy as np
 # Configuration
 IMAGE_SIZE = (256, 256)
 NUM_IMAGES = 4000
-MAX_SHAPES_PER_IMAGE = 5
+MAX_SHAPES_PER_IMAGE = 10
 MIN_SHAPE_SIZE = 20
 MAX_SHAPE_SIZE = 60
 
@@ -20,9 +20,7 @@ TRAIN_LABELS_DIR = os.path.join(TRAIN_DIR, 'labels')
 VAL_IMAGES_DIR = os.path.join(VAL_DIR, 'images')
 VAL_LABELS_DIR = os.path.join(VAL_DIR, 'labels')
 
-# Classes (no rectangle this time)
-#CLASSES = ['circle', 'square', 'triangle']
-CLASSES = ['star', 'hexagon', 'arrow']
+CLASSES = ['star', 'hexagon', 'arrow', 'circle', 'square', 'triangle']
 
 def create_dirs():
     for directory in [TRAIN_IMAGES_DIR, TRAIN_LABELS_DIR, VAL_IMAGES_DIR, VAL_LABELS_DIR]:
@@ -79,8 +77,6 @@ def draw_random_shape(shape_type, size):
 
     shape_color = (random.randint(0,255), random.randint(0,255), random.randint(0,255), 255)
     center = (size // 2, size // 2)
-    #Dataset 1
-    '''
     if shape_type == 'circle':
         draw.ellipse([0,0,size,size], fill=shape_color)
     elif shape_type == 'square':
@@ -88,8 +84,6 @@ def draw_random_shape(shape_type, size):
     elif shape_type == 'triangle':
         triangle_points = [(size/2, 0), (0, size), (size, size)]
         draw.polygon(triangle_points, fill=shape_color)
-    '''
-    #Dataset 2
     if shape_type == 'star':
         draw_star(draw, center, size, shape_color)
     elif shape_type == 'hexagon':
@@ -111,6 +105,13 @@ def draw_random_shape(shape_type, size):
     y_min, y_max = ys.min(), ys.max()
 
     return shape_img, (x_min, y_min, x_max, y_max)
+
+def add_noise(image):
+    arr = np.array(image, dtype=np.int16)  
+    noise = np.random.normal(loc=0, scale=10, size=arr.shape).astype(np.int16)  
+    noisy_arr = np.clip(arr + noise, 0, 255).astype(np.uint8)  
+    return Image.fromarray(noisy_arr)
+
 
 def compute_iou(boxA, boxB):
     xA = max(boxA[0], boxB[0])
@@ -163,15 +164,18 @@ def place_shape_on_image(img, existing_boxes):
     return None, None
 
 def generate_image(index, split='train'):
-    bg_color = (random.randint(200,255), random.randint(200,255), random.randint(200,255))
-    img = Image.new('RGB', IMAGE_SIZE, color=bg_color)
+    # Tworzenie tła (np. jednolitego koloru lub tekstury)
+    bg_color = Image.new('RGB', IMAGE_SIZE, color=(random.randint(200, 255), random.randint(200, 255), random.randint(200, 255)))
+
+    # Inicjalizacja pustego obrazu dla kształtów
+    img_shapes = Image.new('RGBA', IMAGE_SIZE, (255, 255, 255, 0))  
 
     num_shapes = random.randint(1, MAX_SHAPES_PER_IMAGE)
     objects = []
     existing_boxes = []
 
     for _ in range(num_shapes):
-        shape_type, bbox = place_shape_on_image(img, existing_boxes)
+        shape_type, bbox = place_shape_on_image(img_shapes, existing_boxes)
         if shape_type:
             bbox = [int(b) for b in bbox]
             objects.append({
@@ -180,6 +184,13 @@ def generate_image(index, split='train'):
             })
             existing_boxes.append(bbox)
 
+    # Połączenie tła z kształtami
+    final_img = Image.alpha_composite(bg_color.convert('RGBA'), img_shapes)
+
+    # Dodanie szumu na końcu
+    final_img = add_noise(final_img.convert('RGB'))
+
+    # Zapis obrazu i etykiet
     if split == 'train':
         img_path = os.path.join(TRAIN_IMAGES_DIR, f'image_{index}.png')
         label_path = os.path.join(TRAIN_LABELS_DIR, f'image_{index}.json')
@@ -187,7 +198,7 @@ def generate_image(index, split='train'):
         img_path = os.path.join(VAL_IMAGES_DIR, f'image_{index}.png')
         label_path = os.path.join(VAL_LABELS_DIR, f'image_{index}.json')
 
-    img.save(img_path)
+    final_img.save(img_path)
     with open(label_path, 'w') as f:
         json.dump({"objects": objects}, f)
 
